@@ -1,0 +1,17 @@
+# drivers/Kconfig — declares driver symbols for the fixture.
+
+menu "Demo drivers"
+
+config DEMO_DRIVER_GPIO
+	bool "Demo GPIO driver"
+	default y
+
+config DEMO_DRIVER_UART
+	bool "Demo UART driver"
+	default y
+
+config DEMO_DRIVER_STORAGE
+	bool "Demo storage driver"
+	default n
+
+endmenu

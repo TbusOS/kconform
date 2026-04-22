@@ -1,0 +1,3 @@
+platform:     uboot
+defconfigs:
+uboot-demo/configs

@@ -1,0 +1,1 @@
+$KCONFORM lint tests/fixtures/uboot-demo/configs/demo_ghost_defconfig --json

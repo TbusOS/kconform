@@ -1,0 +1,9 @@
+CONFIG_ACME_BOARD_SUPPORT=y
+CONFIG_ACME_PLATFORM_NAME="acme-demo"
+CONFIG_ACME_FEATURE_GROUP=y
+CONFIG_ACME_FEATURE_ALPHA=y
+CONFIG_DEMO_DRIVER_GPIO=y
+# Two ghost symbols below: neither has a config/menuconfig declaration in the
+# Kconfig tree, so kconform lint L001 should flag both.
+CONFIG_ACME_MISSING_FEATURE=y
+CONFIG_DEMO_GHOST_OPTION="unused"

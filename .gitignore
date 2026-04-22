@@ -1,0 +1,22 @@
+# Local editor / IDE state
+.vscode/
+.idea/
+*.swp
+*~
+
+# Claude Code / agent workspace state (local-only, never shared)
+.claude/
+.cursor/
+
+# Python / build byproducts (reserved for future Python helpers)
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Test scratch
+/tests/_tmp/
+
+# OS cruft
+.DS_Store
+Thumbs.db

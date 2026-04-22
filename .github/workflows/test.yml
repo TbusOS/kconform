@@ -1,0 +1,44 @@
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run shellcheck
+        run: |
+          set -e
+          # cli/kconform has no .sh extension; list it explicitly.
+          shellcheck --shell=bash -x \
+            cli/kconform \
+            cli/lib/detect.sh \
+            cli/lib/lint.sh \
+            cli/lib/lint-rules/*.sh \
+            cli/platforms/*.sh \
+            tests/run-tests.sh \
+            scripts/check-forbidden-words.sh
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run kconform test suite
+        run: ./tests/run-tests.sh
+
+  forbidden-words:
+    name: forbidden-words
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for forbidden patterns
+        run: ./scripts/check-forbidden-words.sh

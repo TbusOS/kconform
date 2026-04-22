@@ -1,0 +1,24 @@
+# .forbidden-words — patterns that must NEVER appear in committed files.
+#
+# Format: one extended-regex per non-blank non-comment line. Matching is
+# case-insensitive. The scanner lives in scripts/check-forbidden-words.sh and
+# runs in CI against every changed file.
+#
+# This upstream list targets the universal cases (real homedir paths, obvious
+# credential shapes). Organizations with additional restrictions should
+# maintain their own extension list in their internal companion repo — see
+# DESIGN §8.1 and §9 for the pattern.
+
+# Absolute home paths that leak a real Unix username.
+/home/[a-z][a-z0-9_-]+/
+
+# Mount-style paths that are almost always internal.
+/SSD[0-9]+/
+/mnt/data[0-9]*/
+
+# Credential shapes (very rough — catches accidental paste).
+ghp_[A-Za-z0-9]{20,}
+gho_[A-Za-z0-9]{20,}
+ghs_[A-Za-z0-9]{20,}
+AKIA[0-9A-Z]{16}
+-----BEGIN (OPENSSH|RSA|EC|DSA) PRIVATE KEY-----

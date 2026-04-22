@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# kconform — Kconfig toolkit dispatcher.
+#
+# See DESIGN.md for the full design. This entry point is intentionally thin:
+# parse the verb, source shared libraries, dispatch. All work happens in
+# cli/lib/ and cli/platforms/.
+
+set -euo pipefail
+
+KCONFORM_VERSION="0.1.0"
+
+# Resolve the real path of this script, walking symlinks.
+_kconform_resolve_dir() {
+    local src="$1"
+    while [ -L "$src" ]; do
+        local dir
+        dir="$(cd -P "$(dirname "$src")" && pwd)"
+        src="$(readlink "$src")"
+        [[ $src != /* ]] && src="$dir/$src"
+    done
+    cd -P "$(dirname "$src")" && pwd
+}
+
+KCONFORM_CLI_DIR="$(_kconform_resolve_dir "${BASH_SOURCE[0]}")"
+KCONFORM_ROOT="$(cd "$KCONFORM_CLI_DIR/.." && pwd)"
+export KCONFORM_ROOT KCONFORM_CLI_DIR KCONFORM_VERSION
+
+# shellcheck source=lib/detect.sh
+source "$KCONFORM_CLI_DIR/lib/detect.sh"
+# shellcheck source=lib/lint.sh
+source "$KCONFORM_CLI_DIR/lib/lint.sh"
+
+usage() {
+    cat <<'EOF'
+kconform — a polyglot toolkit for Kconfig-style configuration systems.
+
+Usage:
+  kconform detect [--platform=<name>]
+      Detect the platform in the current (or given) tree. Prints the platform
+      name, project root, and defconfig directory.
+
+  kconform lint <defconfig> [--platform=<name>] [--json]
+      Run lint rules against a defconfig. Exits 0 on clean, 1 on errors, 2 on
+      tool error.
+
+  kconform --help | -h
+  kconform --version
+
+Examples:
+  cd ~/src/u-boot
+  kconform detect
+  kconform lint configs/my_board_defconfig
+
+Documentation: ./DESIGN.md (full design) and ./docs/ (user docs, in progress).
+EOF
+}
+
+main() {
+    if [ $# -eq 0 ]; then
+        usage
+        return 0
+    fi
+
+    case "$1" in
+        detect)
+            shift
+            cmd_detect "$@"
+            ;;
+        lint)
+            shift
+            cmd_lint "$@"
+            ;;
+        -h|--help|help)
+            usage
+            ;;
+        --version)
+            echo "kconform $KCONFORM_VERSION"
+            ;;
+        *)
+            echo "kconform: unknown verb '$1'" >&2
+            echo "Run 'kconform --help' for usage." >&2
+            return 2
+            ;;
+    esac
+}
+
+main "$@"

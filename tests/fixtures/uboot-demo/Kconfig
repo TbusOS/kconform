@@ -1,0 +1,40 @@
+# Root Kconfig for the kconform test fixture.
+#
+# Symbol names use the generic ACME / DEMO prefixes so the fixture carries no
+# vendor or product identity. Keep it that way.
+
+mainmenu "kconform test fixture configuration"
+
+config ACME_BOARD_SUPPORT
+	bool "Enable ACME demo board support"
+	default y
+	help
+	  Top-level toggle for the fixture. Always on in the clean defconfig.
+
+config ACME_PLATFORM_NAME
+	string "Human-readable platform name"
+	default "acme-demo"
+	help
+	  Purely descriptive; emitted into the build banner in a real project.
+
+menuconfig ACME_FEATURE_GROUP
+	bool "ACME feature group"
+	default y
+	help
+	  Declared with the `menuconfig` keyword rather than `config`. Both
+	  forms are equivalent for kconform's ghost-symbol check; this fixture
+	  includes one of each to make sure the detector covers both.
+
+if ACME_FEATURE_GROUP
+
+config ACME_FEATURE_ALPHA
+	bool "Alpha sub-feature"
+	default y
+
+config ACME_FEATURE_BETA
+	bool "Beta sub-feature"
+	default n
+
+endif
+
+source "drivers/Kconfig"
