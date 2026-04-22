@@ -165,7 +165,11 @@ _kconform_lint_emit_text() {
 }
 
 # Flat-JSON value extractor. Handles simple {"k":"v","k2":"v2"} — no nested
-# objects, no escaped quotes in values. That matches the finding schema we emit.
+# objects, no escaped quotes in values. Rule authors must therefore keep
+# message / fix strings free of double quotes (use backticks, angle brackets,
+# or plain prose instead). The `--json` output path emits raw rule lines and
+# is unaffected by this limitation; only the human-readable text formatter
+# calls this helper.
 _kconform_json_get() {
     local line="$1"
     local key="$2"
