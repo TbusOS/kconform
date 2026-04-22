@@ -1,0 +1,17 @@
+# cmd/Kconfig for the kconform U-Boot fixture.
+#
+# Real U-Boot trees put command implementations under cmd/, with a Kconfig
+# here declaring CONFIG_CMD_* symbols. This fixture ships a minimal version
+# so the detector's `cmd/` marker is satisfied by something meaningful
+# rather than an empty directory.
+
+menu "Commands"
+
+config CMD_DEMO_ECHO
+	bool "Demo echo command"
+	default y
+	help
+	  Example command symbol. The fixture only exists to exercise kconform's
+	  platform detection — no real implementation.
+
+endmenu

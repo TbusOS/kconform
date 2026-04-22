@@ -1,21 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Fixture Makefile for kconform tests.
-#
-# This file exists to satisfy kconform's U-Boot detection heuristic, which
-# requires a Makefile at the project root whose first ~40 lines mention
-# U-Boot. The real U-Boot top-level Makefile is substantially larger and
-# carries the full build system; this stub has no build targets and is not
-# meant to be executed.
+# Fixture Makefile for kconform tests. Deliberately does NOT mention U-Boot
+# in the header — the real-world regression this fixture guards against was
+# a detector that grep-ed the Makefile for "u-boot" in its first 40 lines.
+# Upstream U-Boot's Makefile (inherited from the Linux kernel) has no such
+# marker, so that heuristic rejected real trees. The detector must rely on
+# structural signals (configs/ + cmd/ + Kconfig + Makefile at root), which
+# this fixture now exercises.
 
 VERSION = 0
 PATCHLEVEL = 0
 SUBLEVEL = 0
 EXTRAVERSION =
-NAME = kconform-test-fixture
+NAME =
 
-# Stand-in for the real U-Boot top-level Makefile. Do not run.
 .PHONY: help
 help:
-	@echo "This is a kconform test fixture, not a real U-Boot tree."
-	@echo "See ../../../DESIGN.md for context."
+	@echo "kconform test fixture — not a real build system."

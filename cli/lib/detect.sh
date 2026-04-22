@@ -35,17 +35,27 @@ kconform_detect_platform() {
     return 1
 }
 
-# U-Boot signature: Kconfig at root + configs/ directory + Makefile mentioning
-# U-Boot in its header comment. This distinguishes from the Linux kernel
-# (which keeps defconfigs under arch/<arch>/configs/).
+# U-Boot signature: four structural markers that together uniquely identify a
+# U-Boot source tree among the platforms kconform supports.
+#
+#   configs/     U-Boot keeps defconfigs at the project root (the Linux kernel
+#                keeps them under arch/<arch>/configs/ instead).
+#   Kconfig      Both U-Boot and the kernel have this; common to Kconfig-family.
+#   Makefile     Both U-Boot and the kernel have this; common.
+#   cmd/         U-Boot-specific. Holds the command implementations (bootm,
+#                mmc, part, ...). The Linux kernel has no cmd/ directory, nor
+#                do Buildroot/OpenWrt at their roots. This is what pins the
+#                signature to U-Boot.
+#
+# Deliberately does NOT grep the Makefile's content. Upstream U-Boot's Makefile
+# inherits its header from the Linux kernel and does not necessarily mention
+# "u-boot" in its first dozens of lines.
 _kconform_match_uboot() {
     local d="$1"
     [ -d "$d/configs" ] || return 1
     [ -f "$d/Kconfig" ] || return 1
     [ -f "$d/Makefile" ] || return 1
-    # Header comment style: "# SPDX... U-Boot" or "VERSION = ..." near a
-    # U-Boot mention. Scan the first 40 lines to keep this cheap.
-    head -n 40 "$d/Makefile" 2>/dev/null | grep -qiE 'u[-_]?boot' || return 1
+    [ -d "$d/cmd" ] || return 1
     return 0
 }
 
