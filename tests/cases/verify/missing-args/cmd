@@ -1,0 +1,1 @@
+$KCONFORM verify tests/fixtures/uboot-demo/configs/demo_clean_defconfig

@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-KCONFORM_VERSION="0.1.0"
+KCONFORM_VERSION="0.1.4"
 
 # Resolve the real path of this script, walking symlinks.
 _kconform_resolve_dir() {
@@ -29,6 +29,8 @@ export KCONFORM_ROOT KCONFORM_CLI_DIR KCONFORM_VERSION
 source "$KCONFORM_CLI_DIR/lib/detect.sh"
 # shellcheck source=lib/lint.sh
 source "$KCONFORM_CLI_DIR/lib/lint.sh"
+# shellcheck source=lib/verify.sh
+source "$KCONFORM_CLI_DIR/lib/verify.sh"
 
 usage() {
     cat <<'EOF'
@@ -39,17 +41,26 @@ Usage:
       Detect the platform in the current (or given) tree. Prints the platform
       name, project root, and defconfig directory.
 
-  kconform lint <defconfig> [--platform=<name>] [--json]
-      Run lint rules against a defconfig. Exits 0 on clean, 1 on errors, 2 on
+  kconform lint <defconfig> [--platform=<name>] [--json] [--deep] [--keep-scratch]
+      Run lint rules against a defconfig. Use --deep to enable rules that
+      shell out to `make` (L004+). Exits 0 on clean, 1 on errors, 2 on
       tool error.
+
+  kconform verify <before> <after> [--platform=<name>] [--json] [--keep-scratch]
+      Prove or disprove that two defconfigs produce equivalent .config
+      output. Uses `make olddefconfig` in scratch directories to normalize
+      both sides before comparing. Exits 0 if equivalent, 1 on semantic
+      differences, 2 on tool error.
 
   kconform --help | -h
   kconform --version
 
 Examples:
-  cd ~/src/u-boot
+  cd /path/to/your/u-boot
   kconform detect
   kconform lint configs/my_board_defconfig
+  kconform lint configs/my_board_defconfig --deep
+  kconform verify configs/board_v1_defconfig configs/board_v2_defconfig
 
 Documentation: ./DESIGN.md (full design) and ./docs/ (user docs, in progress).
 EOF
@@ -69,6 +80,10 @@ main() {
         lint)
             shift
             cmd_lint "$@"
+            ;;
+        verify)
+            shift
+            cmd_verify "$@"
             ;;
         -h|--help|help)
             usage
