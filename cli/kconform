@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-KCONFORM_VERSION="0.1.6"
+KCONFORM_VERSION="0.1.7"
 
 # Resolve the real path of this script, walking symlinks.
 _kconform_resolve_dir() {
@@ -33,6 +33,8 @@ source "$KCONFORM_CLI_DIR/lib/lint.sh"
 source "$KCONFORM_CLI_DIR/lib/verify.sh"
 # shellcheck source=lib/symbol.sh
 source "$KCONFORM_CLI_DIR/lib/symbol.sh"
+# shellcheck source=lib/fragment.sh
+source "$KCONFORM_CLI_DIR/lib/fragment.sh"
 
 usage() {
     cat <<'EOF'
@@ -58,6 +60,13 @@ Usage:
       Look up a Kconfig symbol's definition. Prints file:line, type,
       prompt, default(s), depends-on, selects, implies, and first help
       line. Exits 0 if found, 1 if undefined, 2 on tool error.
+
+  kconform fragment new <name> [-f]
+      Write a commented empty Kconfig fragment template.
+
+  kconform fragment lint <frag> [--json]
+      Validate fragment syntax (catches pseudo-disable `# CONFIG_X=y`,
+      malformed assignments, unknown line shapes).
 
   kconform --help | -h
   kconform --version
@@ -96,6 +105,10 @@ main() {
         symbol)
             shift
             cmd_symbol "$@"
+            ;;
+        fragment)
+            shift
+            cmd_fragment "$@"
             ;;
         -h|--help|help)
             usage

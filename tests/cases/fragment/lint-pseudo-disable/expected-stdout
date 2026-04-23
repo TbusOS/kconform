@@ -1,0 +1,2 @@
+[pseudo-disable] CONFIG_ACME_PSEUDO_DISABLE
+Use `# CONFIG_X is not set`
