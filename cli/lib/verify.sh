@@ -121,17 +121,21 @@ EOF
     local scratch_after="$scratch/after"
     mkdir -p "$scratch_before" "$scratch_after"
 
-    # Cleanup on exit unless user asked to keep scratch OR make failed
-    # (we leave scratch in place on make failure so the user can read logs).
-    # shellcheck disable=SC2317
-    _kconform_verify_cleanup() {
-        if [ "$keep_scratch" = "1" ]; then
-            return
-        fi
-        rm -rf "$scratch"
-        rmdir "$scratch_base" 2>/dev/null || true
-    }
-    trap _kconform_verify_cleanup EXIT
+    # Cleanup on exit unless user asked to keep scratch, or unless a make
+    # step failed (those paths `trap - EXIT` individually to preserve the
+    # scratch for inspection).
+    #
+    # Note: the trap body must not rely on cmd_verify's local variables
+    # being in scope at trap-fire time — by then the function has already
+    # returned. Interpolate the concrete paths and the keep-scratch flag
+    # into the trap body at trap-setup time using double quotes, so the
+    # trap is a self-contained string with no dangling references.
+    # shellcheck disable=SC2064
+    if [ "$keep_scratch" = "1" ]; then
+        trap "printf 'kconform verify: scratch preserved at %s\\n' '$scratch' >&2" EXIT
+    else
+        trap "rm -rf '$scratch'; rmdir '$scratch_base' 2>/dev/null || true" EXIT
+    fi
 
     cp "$before" "$scratch_before/.config"
     cp "$after"  "$scratch_after/.config"
@@ -170,11 +174,14 @@ EOF
         return 0
     fi
 
-    # Compute lines only-in-before and only-in-after.
+    # Compute lines only-in-before and only-in-after. Must pass LC_ALL=C to
+    # comm so it collates the same way as the `sort` above — otherwise comm
+    # (using the ambient locale) may disagree with LC_ALL=C-sorted input and
+    # bail out with "file is not in sorted order".
     local before_only="$scratch/before-only.lines"
     local after_only="$scratch/after-only.lines"
-    comm -23 "$before_norm" "$after_norm" >"$before_only"
-    comm -13 "$before_norm" "$after_norm" >"$after_only"
+    LC_ALL=C comm -23 "$before_norm" "$after_norm" >"$before_only"
+    LC_ALL=C comm -13 "$before_norm" "$after_norm" >"$after_only"
 
     local before_only_count after_only_count
     before_only_count=$(wc -l <"$before_only" | tr -d ' ')
