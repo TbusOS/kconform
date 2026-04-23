@@ -12,17 +12,33 @@ cmd_lint() {
     local defconfig=""
     local mode="text"
     local platform_override=""
+    local deep="0"
+    local keep_scratch="0"
 
     while [ $# -gt 0 ]; do
         case "$1" in
             --json) mode="json"; shift ;;
+            --deep) deep="1"; shift ;;
+            --keep-scratch) keep_scratch="1"; shift ;;
             --platform=*) platform_override="${1#--platform=}"; shift ;;
             -h|--help)
                 cat <<'EOF'
-kconform lint <defconfig> [--platform=<name>] [--json]
+kconform lint <defconfig> [--platform=<name>] [--json] [--deep] [--keep-scratch]
 
 Run all lint rules against <defconfig>. Output is human-readable by default;
 use --json for a machine-readable JSON array.
+
+Rules are split into two tiers:
+  Fast rules (L001/L002/L003, default): pure parsing of defconfig and the
+  Kconfig tree. Cheap, always run.
+  Deep rules (L004+, opt-in with --deep): shell out to `make` in the project
+  root to run Kconfig operations like olddefconfig / savedefconfig. More
+  expensive; require a working Kconfig toolchain in the target tree.
+
+Deep rules write scratch files under $PWD/.kconform-tmp/ and clean them up on
+exit. Pass --keep-scratch to preserve the scratch directory for inspection
+(useful when investigating an unexpected finding). Add `.kconform-tmp/` to
+your project's .gitignore if you run from a git working tree.
 
 Exit codes:
   0  clean (zero errors)
@@ -42,6 +58,11 @@ EOF
                 shift ;;
         esac
     done
+
+    # Deep rules check these env vars to decide whether to execute and whether
+    # to preserve their scratch directory on exit.
+    export KCONFORM_DEEP="$deep"
+    export KCONFORM_KEEP_SCRATCH="$keep_scratch"
 
     if [ -z "$defconfig" ]; then
         echo "kconform lint: missing <defconfig> argument" >&2

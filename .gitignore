@@ -17,6 +17,9 @@ __pycache__/
 # Test scratch
 /tests/_tmp/
 
+# Deep-lint scratch (produced when kconform is invoked from inside the repo)
+.kconform-tmp/
+
 # OS cruft
 .DS_Store
 Thumbs.db
