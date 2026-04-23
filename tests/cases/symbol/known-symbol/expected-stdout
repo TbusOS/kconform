@@ -1,0 +1,4 @@
+CONFIG_ACME_FEATURE_ALPHA
+type:       bool
+prompt:     "Alpha sub-feature"
+default:    y

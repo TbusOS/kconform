@@ -1,0 +1,5 @@
+CONFIG_ACME_FEATURE_GROUP
+type:       bool
+prompt:     "ACME feature group"
+default:    y
+help:       Declared with the `menuconfig` keyword

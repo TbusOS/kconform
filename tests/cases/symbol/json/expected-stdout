@@ -1,0 +1,5 @@
+"symbol":"CONFIG_DEMO_DRIVER_GPIO"
+"found":true
+"type":"bool"
+"prompt":"Demo GPIO driver"
+"defaults":["y"]
