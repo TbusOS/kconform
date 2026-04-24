@@ -4,6 +4,17 @@ All notable changes to **kconform**. The format is based on [Keep a Changelog](h
 
 ## [Unreleased]
 
+## [0.1.14] — 2026-04-24
+
+### Added
+
+- `docs/index.html` — first GitHub Pages landing page for kconform. Built with the `sky-skills/anthropic-design` aesthetic (Poppins + Lora + JetBrains Mono, orange `#d97757` accent on warm cream `#faf9f5`). Bilingual zh/en with persistent language toggle. Two realistic terminal SVGs show actual `kconform lint --deep` and `kconform verify` output. Self-contained (inline CSS, Google Fonts only). Passes the four design-review gates (`verify.py` / `visual-audit.mjs` / `screenshot.mjs` / LLM critic = 86/100).
+- `shots/` added to `.gitignore` — design-review screenshot and critic-prompt output directory, local-only.
+
+### GitHub Pages setup
+
+To publish: GitHub → Settings → Pages → Source = "Deploy from a branch", Branch = `main`, Folder = `/docs`. Save. First deploy completes in ~60 seconds; URL will be `https://tbusos.github.io/kconform/`.
+
 ## [0.1.13] — 2026-04-24
 
 ### Changed
@@ -110,7 +121,8 @@ All notable changes to **kconform**. The format is based on [Keep a Changelog](h
 - `.forbidden-words` pattern list + `scripts/check-forbidden-words.sh` scanner.
 - Apache-2.0 license.
 
-[Unreleased]: https://github.com/TbusOS/kconform/compare/v0.1.13...HEAD
+[Unreleased]: https://github.com/TbusOS/kconform/compare/v0.1.14...HEAD
+[0.1.14]: https://github.com/TbusOS/kconform/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/TbusOS/kconform/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/TbusOS/kconform/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/TbusOS/kconform/compare/v0.1.10...v0.1.11

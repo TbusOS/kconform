@@ -20,6 +20,9 @@ __pycache__/
 # Deep-lint scratch (produced when kconform is invoked from inside the repo)
 .kconform-tmp/
 
+# design-review output (screenshots + critic prompts for docs/ pages)
+/shots/
+
 # OS cruft
 .DS_Store
 Thumbs.db
