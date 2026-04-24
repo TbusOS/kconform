@@ -1,0 +1,4 @@
+only in <f1>: 7 symbol(s)
+only in <f2>: 3 symbol(s)
+- CONFIG_ACME_FOO
++ CONFIG_ACME_GOOD

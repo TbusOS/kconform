@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-KCONFORM_VERSION="0.1.9"
+KCONFORM_VERSION="0.1.10"
 
 # Resolve the real path of this script, walking symlinks.
 _kconform_resolve_dir() {
@@ -67,6 +67,17 @@ Usage:
   kconform fragment lint <frag> [--json]
       Validate fragment syntax (catches pseudo-disable `# CONFIG_X=y`,
       malformed assignments, unknown line shapes).
+
+  kconform fragment apply <frag> <base> [--out=<path>] [--json]
+      Merge <frag> into <base> and produce the resulting minimal
+      defconfig. Reports added/removed/changed symbols.
+
+  kconform fragment diff <f1> <f2> [--json]
+      Diff two fragments at the directive level. Exit 0 if equivalent,
+      1 if they differ.
+
+  kconform fragment new --from-diff <cfg1> <cfg2> <out-name>
+      Generate a fragment that captures the delta from cfg1 to cfg2.
 
   kconform fragment apply <frag> <base> [--out=<path>] [--json]
       Merge <frag> into <base> and produce the resulting minimal

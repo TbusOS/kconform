@@ -25,14 +25,11 @@ cmd_fragment() {
         new)    _kconform_fragment_new "$@" ;;
         lint)   _kconform_fragment_lint "$@" ;;
         apply)  _kconform_fragment_apply "$@" ;;
-        diff)
-            echo "kconform fragment diff: not implemented in this release" >&2
-            echo "  Planned for v0.1.10. See DESIGN §4.5." >&2
-            return 2 ;;
+        diff)   _kconform_fragment_diff "$@" ;;
         -h|--help|help) _kconform_fragment_usage ;;
         *)
             echo "kconform fragment: unknown sub-command '$sub'" >&2
-            echo "  Sub-commands: new | lint | apply | diff (pending)" >&2
+            echo "  Sub-commands: new | lint | apply | diff" >&2
             return 2 ;;
     esac
 }
@@ -61,7 +58,10 @@ Sub-commands:
                           Use --out=<path> to write the result; default is
                           stdout.
 
-  diff <f1> <f2>          (pending) Diff two fragments.
+  diff <f1> <f2>          Diff two fragments at the directive level
+                          (`CONFIG_X=V` and `# CONFIG_X is not set`).
+                          Report symbols only in f1, only in f2, or with
+                          different directives in both.
 
 Run `kconform fragment <sub-command> --help` for per-sub-command details.
 EOF
@@ -72,15 +72,34 @@ EOF
 _kconform_fragment_new() {
     local name=""
     local force=0
+    local from_diff_a=""
+    local from_diff_b=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -f|--force) force=1; shift ;;
+            --from-diff)
+                shift
+                if [ $# -lt 2 ]; then
+                    echo "kconform fragment new: --from-diff needs two paths (<cfg1> <cfg2>)" >&2
+                    return 2
+                fi
+                from_diff_a="$1"; from_diff_b="$2"; shift 2 ;;
             -h|--help)
                 cat <<'EOF'
-kconform fragment new <name> [-f|--force]
+kconform fragment new <name> [-f|--force] [--from-diff <cfg1> <cfg2>]
 
-Write a commented empty fragment template to <name>.cfg. If <name> already
-ends in .cfg or .fragment the file is written at that literal path.
+Write a fragment file at <name>.cfg. Two modes:
+
+Default (empty):
+  Emits a commented template listing the valid fragment line shapes.
+
+--from-diff <cfg1> <cfg2>:
+  Emits a fragment that captures the delta from <cfg1> to <cfg2>. For every
+  directive in <cfg2> (enable or canonical disable) that is missing from
+  <cfg1> or present with a different value, that directive is written into
+  the fragment. Symbols present only in <cfg1> are NOT materialized as
+  `# CONFIG_X is not set` — kconform cannot tell whether the absence in
+  <cfg2> was intentional or just default.
 
 -f | --force    Overwrite an existing file.
 EOF
@@ -108,6 +127,19 @@ EOF
     if [ -e "$path" ] && [ "$force" != "1" ]; then
         echo "kconform fragment new: '$path' already exists (use --force to overwrite)" >&2
         return 2
+    fi
+
+    # --from-diff mode: materialize the delta as a fragment.
+    if [ -n "$from_diff_a" ]; then
+        local f
+        for f in "$from_diff_a" "$from_diff_b"; do
+            if [ ! -f "$f" ]; then
+                echo "kconform fragment new --from-diff: '$f': no such file" >&2
+                return 2
+            fi
+        done
+        _kconform_fragment_emit_from_diff "$from_diff_a" "$from_diff_b" "$path" || return $?
+        return 0
     fi
 
     cat >"$path" <<'EOF'
@@ -630,4 +662,212 @@ _kconform_fragment_file_to_json_array() {
         printf '"%s"' "$(_kconform_fragment_json_escape "$line")"
     done <"$file"
     printf ']'
+}
+
+# --- fragment diff / new --from-diff: shared parser + logic --------------
+
+# Parse a fragment / .config / defconfig into a TSV of "symbol<TAB>directive"
+# for every enable-form (`CONFIG_X=V`) and canonical-disable line (`# CONFIG_X
+# is not set`). Output is sorted by symbol and deduped. Comments, blanks, and
+# pseudo-disable lines are ignored.
+_kconform_fragment_parse_directives() {
+    local file="$1"
+    local out="$2"
+
+    awk '
+    /^CONFIG_[A-Za-z_][A-Za-z0-9_]*=/ {
+        line = $0
+        sym = $0
+        sub(/=.*/, "", sym)
+        sub(/^CONFIG_/, "", sym)
+        print sym "\t" line
+        next
+    }
+    /^#[[:space:]]+CONFIG_[A-Za-z_][A-Za-z0-9_]*[[:space:]]+is[[:space:]]+not[[:space:]]+set[[:space:]]*$/ {
+        line = $0
+        sym = $0
+        sub(/^#[[:space:]]+CONFIG_/, "", sym)
+        sub(/[[:space:]]+is.*/, "", sym)
+        print sym "\t" line
+        next
+    }
+    ' "$file" | LC_ALL=C sort -u >"$out"
+}
+
+# Emit a fragment at <out_path> containing every directive present in <b> that
+# is absent from or differs against <a>. Symbols in <a> but not <b> are NOT
+# emitted — we can't infer <b>'s intent from the absence.
+_kconform_fragment_emit_from_diff() {
+    local a="$1"
+    local b="$2"
+    local out_path="$3"
+
+    local ta tb
+    ta="$(mktemp)"; tb="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$ta' '$tb'" RETURN
+
+    _kconform_fragment_parse_directives "$a" "$ta"
+    _kconform_fragment_parse_directives "$b" "$tb"
+
+    # A directive from b is "new or changed" if the exact TSV row from b does
+    # not appear in a (that covers both "symbol not in a" and "symbol with
+    # different value in a"). comm -13 a b → lines only in b.
+    local to_emit_tsv
+    to_emit_tsv="$(mktemp)"
+    LC_ALL=C comm -13 "$ta" "$tb" >"$to_emit_tsv"
+
+    {
+        printf '# Kconfig fragment — generated by `kconform fragment new --from-diff`.\n'
+        printf '#\n'
+        printf '# Source:\n'
+        printf '#   a = %s\n' "$a"
+        printf '#   b = %s\n' "$b"
+        printf '#\n'
+        printf '# Contents: every directive from <b> that is missing or differs in <a>.\n'
+        printf '# Applying this fragment on top of <a> produces a config that matches <b>\n'
+        printf '# on the symbols <b> sets explicitly. Symbols present only in <a> are not\n'
+        printf '# emitted — kconform cannot tell whether <b> intentionally left them off or\n'
+        printf '# the minimization step just dropped a default-matching line.\n'
+        printf '\n'
+        cut -f2- "$to_emit_tsv"
+    } >"$out_path"
+
+    local count
+    count=$(wc -l <"$to_emit_tsv" | tr -d ' ')
+    printf 'kconform fragment new --from-diff: wrote %s directive(s) to %s\n' "$count" "$out_path"
+
+    rm -f "$to_emit_tsv"
+    return 0
+}
+
+# --- fragment diff -------------------------------------------------------
+
+_kconform_fragment_diff() {
+    local f1=""
+    local f2=""
+    local mode="text"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json) mode="json"; shift ;;
+            -h|--help)
+                cat <<'EOF'
+kconform fragment diff <f1> <f2> [--json]
+
+Compare two fragment files at the directive level. Reports:
+  only in <f1>:   symbols with a directive in f1, none in f2
+  only in <f2>:   symbols with a directive in f2, none in f1
+  differs:        symbol has a directive in both, but the directive lines
+                  do not match (enable ↔ disable, or different values)
+
+Comments, blank lines, and pseudo-disable lines (`# CONFIG_X=y`) are
+ignored — run `kconform fragment lint` first if you need to validate
+fragment syntax.
+
+Exit codes:
+  0  fragments are equivalent (every symbol has the same directive, if any)
+  1  fragments differ
+  2  tool error (file missing, ...)
+EOF
+                return 0 ;;
+            --) shift; break ;;
+            -*) echo "kconform fragment diff: unknown flag '$1'" >&2; return 2 ;;
+            *)
+                if [ -z "$f1" ]; then f1="$1"
+                elif [ -z "$f2" ]; then f2="$1"
+                else echo "kconform fragment diff: unexpected arg '$1'" >&2; return 2
+                fi; shift ;;
+        esac
+    done
+
+    if [ -z "$f1" ] || [ -z "$f2" ]; then
+        echo "kconform fragment diff: need two fragment paths" >&2
+        return 2
+    fi
+    local f
+    for f in "$f1" "$f2"; do
+        if [ ! -f "$f" ]; then
+            echo "kconform fragment diff: '$f': no such file" >&2
+            return 2
+        fi
+    done
+
+    local t1 t2
+    t1="$(mktemp)"; t2="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$t1' '$t2'" RETURN
+
+    _kconform_fragment_parse_directives "$f1" "$t1"
+    _kconform_fragment_parse_directives "$f2" "$t2"
+
+    # Symbols only in t1 (full directive comparison, not just symbol key).
+    # For "only-in" semantics we need symbol-key comparison (if a symbol is in
+    # both but with different directive, it's "differs", not "only-in-X").
+    local syms1 syms2
+    syms1="$(mktemp)"; syms2="$(mktemp)"
+    cut -f1 "$t1" >"$syms1"
+    cut -f1 "$t2" >"$syms2"
+
+    local only1_syms only2_syms both_syms
+    only1_syms="$(mktemp)"; only2_syms="$(mktemp)"; both_syms="$(mktemp)"
+    LC_ALL=C comm -23 "$syms1" "$syms2" >"$only1_syms"
+    LC_ALL=C comm -13 "$syms1" "$syms2" >"$only2_syms"
+    LC_ALL=C comm -12 "$syms1" "$syms2" >"$both_syms"
+
+    # For symbols in both, find those with differing directives.
+    local differs_syms
+    differs_syms="$(mktemp)"
+    local sym d1 d2
+    while IFS= read -r sym; do
+        [ -z "$sym" ] && continue
+        d1=$(grep -F -m1 "${sym}"$'\t' "$t1" | cut -f2)
+        d2=$(grep -F -m1 "${sym}"$'\t' "$t2" | cut -f2)
+        if [ "$d1" != "$d2" ]; then
+            printf 'CONFIG_%s\n' "$sym" >>"$differs_syms"
+        fi
+    done <"$both_syms"
+
+    # Decorate only-in outputs with CONFIG_ prefix for consistency.
+    sed 's/^/CONFIG_/' "$only1_syms" >"${only1_syms}.out"
+    sed 's/^/CONFIG_/' "$only2_syms" >"${only2_syms}.out"
+
+    local o1_n o2_n dif_n
+    o1_n=$(wc -l <"${only1_syms}.out" | tr -d ' ')
+    o2_n=$(wc -l <"${only2_syms}.out" | tr -d ' ')
+    dif_n=$(wc -l <"$differs_syms" | tr -d ' ')
+    local total=$((o1_n + o2_n + dif_n))
+
+    if [ "$mode" = "json" ]; then
+        printf '{"f1":"%s","f2":"%s"' \
+            "$(_kconform_fragment_json_escape "$f1")" \
+            "$(_kconform_fragment_json_escape "$f2")"
+        printf ',"equivalent":%s' "$([ $total -eq 0 ] && printf 'true' || printf 'false')"
+        printf ',"only_in_f1":'
+        _kconform_fragment_file_to_json_array "${only1_syms}.out"
+        printf ',"only_in_f2":'
+        _kconform_fragment_file_to_json_array "${only2_syms}.out"
+        printf ',"differs":'
+        _kconform_fragment_file_to_json_array "$differs_syms"
+        printf '}\n'
+    else
+        printf 'kconform fragment diff: %s vs %s\n' "$f1" "$f2"
+        if [ "$total" -eq 0 ]; then
+            printf '  equivalent — same directives in both\n'
+        else
+            printf '  only in <f1>: %s symbol(s)\n' "$o1_n"
+            [ "$o1_n" -gt 0 ] && sed 's/^/    - /' "${only1_syms}.out"
+            printf '  only in <f2>: %s symbol(s)\n' "$o2_n"
+            [ "$o2_n" -gt 0 ] && sed 's/^/    + /' "${only2_syms}.out"
+            printf '  differs:      %s symbol(s)\n' "$dif_n"
+            [ "$dif_n" -gt 0 ] && sed 's/^/    ~ /' "$differs_syms"
+        fi
+    fi
+
+    rm -f "$syms1" "$syms2" "$only1_syms" "$only2_syms" "$both_syms" \
+          "${only1_syms}.out" "${only2_syms}.out" "$differs_syms"
+
+    if [ "$total" -gt 0 ]; then
+        return 1
+    fi
+    return 0
 }
