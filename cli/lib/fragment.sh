@@ -114,17 +114,18 @@ EOF
 #   scripts/kconfig/merge_config.sh configs/<board>_defconfig <this file>
 #   kconform fragment apply <this file> configs/<board>_defconfig
 #
-# Syntax — use only these line shapes:
-#   CONFIG_X=y                (enable a bool / tristate)
-#   CONFIG_X=m                (enable a tristate as module)
-#   CONFIG_X=<int>            (set an int symbol)
-#   CONFIG_X=0x<hex>          (set a hex symbol)
-#   CONFIG_X="string value"   (set a string symbol)
-#   # CONFIG_X is not set     (canonical disable — note no '=')
-#   # any plain comment       (documentation, free text)
+# Syntax — use only these line shapes (replace <NAME> with a real symbol):
+#   CONFIG_<NAME>=y                (enable a bool / tristate)
+#   CONFIG_<NAME>=m                (enable a tristate as module)
+#   CONFIG_<NAME>=<int>            (set an int symbol)
+#   CONFIG_<NAME>=0x<hex>          (set a hex symbol)
+#   CONFIG_<NAME>="string value"   (set a string symbol)
+#   # CONFIG_<NAME> is not set     (canonical disable — note no '=')
+#   # any plain comment            (documentation, free text)
 #
-# DO NOT write `# CONFIG_X=y` thinking it means "disable X" — Kconfig
-# ignores that line entirely. Use `# CONFIG_X is not set` instead.
+# DO NOT write `# CONFIG_<NAME>=y` thinking it means "disable <NAME>" —
+# Kconfig ignores that line entirely. Use `# CONFIG_<NAME> is not set`
+# instead. (`kconform fragment lint` catches this mistake.)
 
 # --- your assignments below ---
 EOF
