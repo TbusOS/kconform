@@ -22,16 +22,17 @@ cmd_fragment() {
     local sub="$1"
     shift
     case "$sub" in
-        new)  _kconform_fragment_new "$@" ;;
-        lint) _kconform_fragment_lint "$@" ;;
-        apply|diff)
-            echo "kconform fragment $sub: not implemented in this release" >&2
-            echo "  Planned for a later version. See DESIGN §4.5." >&2
+        new)    _kconform_fragment_new "$@" ;;
+        lint)   _kconform_fragment_lint "$@" ;;
+        apply)  _kconform_fragment_apply "$@" ;;
+        diff)
+            echo "kconform fragment diff: not implemented in this release" >&2
+            echo "  Planned for v0.1.10. See DESIGN §4.5." >&2
             return 2 ;;
         -h|--help|help) _kconform_fragment_usage ;;
         *)
             echo "kconform fragment: unknown sub-command '$sub'" >&2
-            echo "  Sub-commands: new | lint | apply (pending) | diff (pending)" >&2
+            echo "  Sub-commands: new | lint | apply | diff (pending)" >&2
             return 2 ;;
     esac
 }
@@ -54,9 +55,11 @@ Sub-commands:
                           Anything else — in particular `# CONFIG_X=y`, a
                           common pseudo-disable — is flagged.
 
-  apply <frag> [<base>]   (pending) Merge <frag> into <base> via
-                          merge_config.sh-equivalent, run olddefconfig,
-                          report result.
+  apply <frag> <base>     Merge <frag> into <base> and produce the resulting
+                          minimal defconfig. Runs `make olddefconfig` +
+                          `make savedefconfig` in a scratch directory.
+                          Use --out=<path> to write the result; default is
+                          stdout.
 
   diff <f1> <f2>          (pending) Diff two fragments.
 
@@ -326,4 +329,305 @@ _kconform_fragment_json_escape() {
     s="${s//\\/\\\\}"
     s="${s//\"/\\\"}"
     printf '%s' "$s"
+}
+
+# --- fragment apply -------------------------------------------------------
+
+_kconform_fragment_apply() {
+    local frag=""
+    local base=""
+    local out_path=""
+    local platform_override=""
+    local keep_scratch="0"
+    local mode="text"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --out=*) out_path="${1#--out=}"; shift ;;
+            --platform=*) platform_override="${1#--platform=}"; shift ;;
+            --keep-scratch) keep_scratch="1"; shift ;;
+            --json) mode="json"; shift ;;
+            -h|--help)
+                cat <<'EOF'
+kconform fragment apply <frag> <base> [--out=<path>] [--platform=<name>] [--keep-scratch] [--json]
+
+Merge <frag> into <base>, run `make olddefconfig` and `make savedefconfig`
+in a scratch directory, and emit the resulting minimal defconfig.
+
+Output:
+  Default (text):  the minimal defconfig on stdout, a summary on stderr.
+  --out=<path>:    writes the minimal defconfig to <path>; summary on stdout.
+  --json:          structured verdict on stdout (no defconfig body).
+
+Summary reports, at the .config level (i.e. effective behavior after
+olddefconfig), how many symbols the fragment added / removed / changed
+relative to <base>.
+
+Scratch directory: $PWD/.kconform-tmp/fragment-apply-<pid>-<ts>/
+Cleaned on exit unless --keep-scratch or a make step fails.
+
+Exit codes:
+  0  applied successfully
+  1  make step failed (scratch is preserved for inspection)
+  2  tool error (file missing, platform not detected, ...)
+EOF
+                return 0 ;;
+            --) shift; break ;;
+            -*) echo "kconform fragment apply: unknown flag '$1'" >&2; return 2 ;;
+            *)
+                if [ -z "$frag" ]; then frag="$1"
+                elif [ -z "$base" ]; then base="$1"
+                else echo "kconform fragment apply: unexpected arg '$1'" >&2; return 2
+                fi; shift ;;
+        esac
+    done
+
+    if [ -z "$frag" ] || [ -z "$base" ]; then
+        echo "kconform fragment apply: need both <frag> and <base>" >&2
+        echo "  Run 'kconform fragment apply --help' for details." >&2
+        return 2
+    fi
+    local f
+    for f in "$frag" "$base"; do
+        if [ ! -f "$f" ]; then
+            echo "kconform fragment apply: '$f': no such file" >&2
+            return 2
+        fi
+    done
+
+    # Resolve absolute paths before any cd.
+    frag="$(cd "$(dirname "$frag")" && pwd)/$(basename "$frag")"
+    base="$(cd "$(dirname "$base")" && pwd)/$(basename "$base")"
+
+    # Detect project root from <base>'s directory.
+    local project_root platform
+    local base_dir
+    base_dir="$(dirname "$base")"
+    if ! project_root="$(kconform_find_project_root "$base_dir")"; then
+        echo "kconform fragment apply: could not detect project root near '$base'" >&2
+        echo "  Pass --platform=<name> to override autodetect." >&2
+        return 2
+    fi
+    if [ -n "$platform_override" ]; then
+        platform="$platform_override"
+    else
+        platform="$(kconform_detect_platform "$project_root")"
+    fi
+    local adapter="$KCONFORM_CLI_DIR/platforms/$platform.sh"
+    if [ ! -f "$adapter" ]; then
+        echo "kconform fragment apply: no adapter for platform '$platform'" >&2
+        return 2
+    fi
+    # shellcheck source=/dev/null
+    source "$adapter"
+
+    # Scratch setup — same policy as L004 / verify.
+    local scratch_base="$PWD/.kconform-tmp"
+    local scratch="$scratch_base/fragment-apply-$$-$(date +%s)"
+    local scratch_base_cfg="$scratch/base"
+    local scratch_merged="$scratch/merged"
+    mkdir -p "$scratch_base_cfg" "$scratch_merged"
+
+    # shellcheck disable=SC2064
+    if [ "$keep_scratch" = "1" ]; then
+        trap "printf 'kconform fragment apply: scratch preserved at %s\\n' '$scratch' >&2" EXIT
+    else
+        trap "rm -rf '$scratch'; rmdir '$scratch_base' 2>/dev/null || true" EXIT
+    fi
+
+    # Stage base.
+    cp "$base" "$scratch_base_cfg/.config"
+    # Stage merged: copy base then apply fragment on top.
+    cp "$base" "$scratch_merged/.config"
+    _kconform_fragment_merge_into "$frag" "$scratch_merged/.config"
+
+    # Normalize both sides via olddefconfig so the diff is semantic, not
+    # cosmetic.
+    if ! make -C "$project_root" O="$scratch_base_cfg" olddefconfig \
+           >"$scratch_base_cfg/make.log" 2>&1; then
+        trap - EXIT
+        echo "kconform fragment apply: make olddefconfig failed on <base>" >&2
+        echo "  see $scratch_base_cfg/make.log" >&2
+        return 1
+    fi
+    if ! make -C "$project_root" O="$scratch_merged" olddefconfig \
+           >"$scratch_merged/make.log" 2>&1; then
+        trap - EXIT
+        echo "kconform fragment apply: make olddefconfig failed on merged" >&2
+        echo "  see $scratch_merged/make.log" >&2
+        return 1
+    fi
+    if ! make -C "$project_root" O="$scratch_merged" savedefconfig \
+           >>"$scratch_merged/make.log" 2>&1; then
+        trap - EXIT
+        echo "kconform fragment apply: make savedefconfig failed on merged" >&2
+        echo "  see $scratch_merged/make.log" >&2
+        return 1
+    fi
+
+    # Compute semantic delta at the .config level: compare sorted semantic
+    # lines (CONFIG_X=... and # CONFIG_X is not set).
+    local base_norm="$scratch/base.norm"
+    local merged_norm="$scratch/merged.norm"
+    grep -E '^(CONFIG_|# CONFIG_)' "$scratch_base_cfg/.config" | LC_ALL=C sort >"$base_norm" || true
+    grep -E '^(CONFIG_|# CONFIG_)' "$scratch_merged/.config"  | LC_ALL=C sort >"$merged_norm"  || true
+
+    local added removed changed
+    added=$(mktemp -p "$scratch" added.XXXXXX)
+    removed=$(mktemp -p "$scratch" removed.XXXXXX)
+    changed=$(mktemp -p "$scratch" changed.XXXXXX)
+    _kconform_fragment_classify_delta "$base_norm" "$merged_norm" "$added" "$removed" "$changed"
+
+    local added_count removed_count changed_count
+    added_count=$(wc -l <"$added" | tr -d ' ')
+    removed_count=$(wc -l <"$removed" | tr -d ' ')
+    changed_count=$(wc -l <"$changed" | tr -d ' ')
+
+    # Emit the resulting minimal defconfig.
+    if [ -n "$out_path" ]; then
+        cp "$scratch_merged/defconfig" "$out_path"
+    fi
+
+    if [ "$mode" = "json" ]; then
+        _kconform_fragment_apply_emit_json \
+            "$frag" "$base" "$out_path" \
+            "$added" "$removed" "$changed" \
+            "$scratch_merged/defconfig"
+    else
+        if [ -z "$out_path" ]; then
+            # defconfig body to stdout; summary to stderr.
+            cat "$scratch_merged/defconfig"
+        fi
+        {
+            printf 'kconform fragment apply: %s + %s\n' "$base" "$frag"
+            printf '  added:   %s symbol(s)\n' "$added_count"
+            printf '  removed: %s symbol(s)\n' "$removed_count"
+            printf '  changed: %s symbol(s)\n' "$changed_count"
+            if [ -n "$out_path" ]; then
+                printf '  wrote minimal defconfig to: %s\n' "$out_path"
+            fi
+            if [ "$keep_scratch" = "1" ]; then
+                printf '  scratch preserved at: %s\n' "$scratch"
+            fi
+        } >&2
+    fi
+
+    return 0
+}
+
+# Append/replace lines from <frag> into <target> (the merged .config). Any
+# fragment line that sets or disables a CONFIG_X will first delete any
+# existing entry for CONFIG_X in <target>, then append the new directive.
+# Plain comments, blanks, and unrecognized lines in the fragment are skipped
+# (fragment lint is the proper place to surface those as errors).
+_kconform_fragment_merge_into() {
+    local frag="$1"
+    local target="$2"
+
+    local tmp="${target}.merge.tmp"
+    cp "$target" "$tmp"
+
+    local line sym
+    while IFS= read -r line || [ -n "$line" ]; do
+        sym=""
+        if [[ "$line" =~ ^CONFIG_([A-Za-z_][A-Za-z0-9_]*)= ]]; then
+            sym="${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ ^#[[:space:]]+CONFIG_([A-Za-z_][A-Za-z0-9_]*)[[:space:]]+is[[:space:]]+not[[:space:]]+set[[:space:]]*$ ]]; then
+            sym="${BASH_REMATCH[1]}"
+        else
+            continue
+        fi
+        # Delete any existing entry for CONFIG_<sym> in tmp — both
+        # enable-form and canonical-disable-form.
+        sed -i "/^CONFIG_${sym}=/d" "$tmp"
+        sed -i "/^# CONFIG_${sym} is not set$/d" "$tmp"
+        # Append the new directive.
+        printf '%s\n' "$line" >>"$tmp"
+    done <"$frag"
+
+    mv "$tmp" "$target"
+}
+
+# Given sorted semantic lines from base and merged, compute three classes:
+#   added    — CONFIG_X present in merged but not base
+#   removed  — CONFIG_X present in base but not merged
+#   changed  — CONFIG_X present in both with different directive
+# Each output file contains one CONFIG_X per line (enable form or
+# canonical disable as it appears in that file).
+_kconform_fragment_classify_delta() {
+    local base_norm="$1"
+    local merged_norm="$2"
+    local added_out="$3"
+    local removed_out="$4"
+    local changed_out="$5"
+
+    local base_syms="$(mktemp)"
+    local merged_syms="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$base_syms' '$merged_syms'" RETURN
+
+    # Extract just the symbol name from each line for set-membership compare.
+    sed -E 's/^(CONFIG_|# CONFIG_)([A-Za-z0-9_]+).*/\2/' "$base_norm"   | LC_ALL=C sort -u >"$base_syms"
+    sed -E 's/^(CONFIG_|# CONFIG_)([A-Za-z0-9_]+).*/\2/' "$merged_norm" | LC_ALL=C sort -u >"$merged_syms"
+
+    # added = in merged, not in base
+    LC_ALL=C comm -13 "$base_syms" "$merged_syms" \
+        | sed 's/^/CONFIG_/' >"$added_out"
+    # removed = in base, not in merged
+    LC_ALL=C comm -23 "$base_syms" "$merged_syms" \
+        | sed 's/^/CONFIG_/' >"$removed_out"
+    # changed = in both, directive text differs
+    local common_syms
+    common_syms="$(mktemp)"
+    LC_ALL=C comm -12 "$base_syms" "$merged_syms" >"$common_syms"
+    : >"$changed_out"
+    local sym base_dir merged_dir
+    while IFS= read -r sym; do
+        [ -z "$sym" ] && continue
+        base_dir="$(grep -E "^(CONFIG_${sym}=|# CONFIG_${sym} is not set)" "$base_norm"   | head -n1)"
+        merged_dir="$(grep -E "^(CONFIG_${sym}=|# CONFIG_${sym} is not set)" "$merged_norm" | head -n1)"
+        if [ "$base_dir" != "$merged_dir" ]; then
+            printf 'CONFIG_%s\n' "$sym" >>"$changed_out"
+        fi
+    done <"$common_syms"
+    rm -f "$common_syms"
+}
+
+_kconform_fragment_apply_emit_json() {
+    local frag="$1"; local base="$2"; local out_path="$3"
+    local added="$4"; local removed="$5"; local changed="$6"
+    local defconfig_path="$7"
+
+    printf '{"applied":true'
+    printf ',"fragment":"%s"' "$(_kconform_fragment_json_escape "$frag")"
+    printf ',"base":"%s"' "$(_kconform_fragment_json_escape "$base")"
+    if [ -n "$out_path" ]; then
+        printf ',"out":"%s"' "$(_kconform_fragment_json_escape "$out_path")"
+    fi
+    printf ',"added":'
+    _kconform_fragment_file_to_json_array "$added"
+    printf ',"removed":'
+    _kconform_fragment_file_to_json_array "$removed"
+    printf ',"changed":'
+    _kconform_fragment_file_to_json_array "$changed"
+    printf '}\n'
+    return 0
+}
+
+_kconform_fragment_file_to_json_array() {
+    local file="$1"
+    if [ ! -s "$file" ]; then
+        printf '[]'
+        return
+    fi
+    printf '['
+    local first=1
+    local line
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        if [ $first -eq 0 ]; then printf ','; fi
+        first=0
+        printf '"%s"' "$(_kconform_fragment_json_escape "$line")"
+    done <"$file"
+    printf ']'
 }
