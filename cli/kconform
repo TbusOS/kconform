@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-KCONFORM_VERSION="0.1.10"
+KCONFORM_VERSION="0.1.11"
 
 # Resolve the real path of this script, walking symlinks.
 _kconform_resolve_dir() {
@@ -35,6 +35,8 @@ source "$KCONFORM_CLI_DIR/lib/verify.sh"
 source "$KCONFORM_CLI_DIR/lib/symbol.sh"
 # shellcheck source=lib/fragment.sh
 source "$KCONFORM_CLI_DIR/lib/fragment.sh"
+# shellcheck source=lib/wrapper.sh
+source "$KCONFORM_CLI_DIR/lib/wrapper.sh"
 
 usage() {
     cat <<'EOF'
@@ -84,6 +86,14 @@ Usage:
       defconfig (runs `make olddefconfig` + `make savedefconfig` in a
       scratch dir). Reports added/removed/changed symbols.
 
+  kconform menuconfig [--platform=<name>] [--arch=<arch>]
+      Run `make menuconfig` in the detected project root with the right
+      ARCH set. Convenience wrapper — same as `cd <root> && make menuconfig`.
+
+  kconform minimize <defconfig> [--yes|--check] [--json]
+      Normalize a defconfig via savedefconfig roundtrip. Default is
+      dry-run (`--check`); `--yes` writes the result back in place.
+
   kconform --help | -h
   kconform --version
 
@@ -94,6 +104,9 @@ Examples:
   kconform lint configs/my_board_defconfig --deep
   kconform verify configs/board_v1_defconfig configs/board_v2_defconfig
   kconform symbol CONFIG_AHCI
+  kconform minimize configs/my_board_defconfig --check
+  kconform fragment apply secure-boot.cfg configs/my_board_defconfig
+  kconform menuconfig
 
 Documentation: ./DESIGN.md (full design) and ./docs/ (user docs, in progress).
 EOF
@@ -125,6 +138,14 @@ main() {
         fragment)
             shift
             cmd_fragment "$@"
+            ;;
+        menuconfig)
+            shift
+            cmd_menuconfig "$@"
+            ;;
+        minimize)
+            shift
+            cmd_minimize "$@"
             ;;
         -h|--help|help)
             usage

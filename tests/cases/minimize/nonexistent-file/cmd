@@ -1,0 +1,1 @@
+$KCONFORM minimize tests/fixtures/uboot-demo/configs/this_defconfig_does_not_exist
