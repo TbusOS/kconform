@@ -13,14 +13,14 @@ kconform wraps what your framework already ships (`make menuconfig`, `merge_conf
 
 ## Status
 
-**v0.1.12 · U-Boot feature-complete**. Every verb described in this README is implemented and validated end-to-end against [upstream U-Boot](https://github.com/u-boot/u-boot). Support for the Linux kernel, Buildroot, OpenWrt, and Android is planned (see [Supported platforms](#supported-platforms)).
+**v0.1.13 · U-Boot feature-complete · first public release**. Every verb described in this README is implemented and validated end-to-end against [upstream U-Boot](https://github.com/u-boot/u-boot). Support for the Linux kernel, Buildroot, OpenWrt, and Android is planned (see [Supported platforms](#supported-platforms)).
 
 See [DESIGN.md](./DESIGN.md) for the full design, roadmap, and extension model.
 
 ## Install
 
 ```bash
-git clone https://github.com/<your-fork>/kconform.git
+git clone https://github.com/TbusOS/kconform.git
 ln -sf "$PWD/kconform/cli/kconform" ~/.local/bin/kconform   # or any dir on PATH
 kconform --version
 ```
